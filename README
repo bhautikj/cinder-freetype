@@ -1,0 +1,9 @@
+* based on freetype-2.4.4
+* osx: http://download.savannah.gnu.org/releases/freetype/
+* ios: https://github.com/cdave1/freetype2-ios
+
+Implementation based on:
+http://en.wikibooks.org/wiki/OpenGL_Programming/Modern_OpenGL_Tutorial_Text_Rendering_01 (now)
+http://en.wikibooks.org/wiki/OpenGL_Programming/Modern_OpenGL_Tutorial_Text_Rendering_02 (later)
+
+
