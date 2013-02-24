@@ -11,7 +11,9 @@
 
 namespace ftTextRender
 {
-  
+
+class atlas;
+
 class TextRender
 {
   public:
@@ -26,6 +28,7 @@ class TextRender
     FT_Face                 mFace;
     cinder::gl::GlslProg    mShader;
     cinder::gl::VboRef      mVbo;
+    atlas*                  mAtlas;
 };
   
 }//namespace ftTextRender

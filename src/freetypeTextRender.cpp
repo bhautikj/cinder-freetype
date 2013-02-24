@@ -3,6 +3,8 @@
 #include "cinder/app/App.h"
 #include "cinder/gl/Texture.h"
 
+#include "atlas.h"
+
 namespace
 {
 std::string fShad = "\
@@ -54,7 +56,8 @@ TextRender::TextRender(const std::string& fontName) :
   
   float positions[] = { 0, 0, 0, 1, 0, .01, 0, 1, .01, 0, 0, 1, .01, .01, 0, 1 };
   
-  mVbo = cinder::gl::Vbo::create(GL_TRIANGLE_STRIP);
+  //mVbo = cinder::gl::Vbo::create(GL_TRIANGLE_STRIP);
+  mVbo = cinder::gl::Vbo::create(GL_TRIANGLES);
   mVbo->set(cinder::gl::Vbo::Attribute::create("position", 4, GL_FLOAT, GL_DYNAMIC_DRAW)->setData(positions, 16));
   
   try {
@@ -64,6 +67,8 @@ TextRender::TextRender(const std::string& fontName) :
     std::cout<<exc.what()<<std::endl;
     assert(0);
   }
+  
+  mAtlas = new atlas(mFace, 48);
 }
 
 TextRender::~TextRender()
@@ -78,65 +83,43 @@ TextRender::~TextRender()
 void
 TextRender::render_text(const char *text, float x, float y, float sx, float sy)
 {
-	const char *p;
-	FT_GlyphSlot g = mFace->glyph;
+	const uint8_t *p;
 
-  cinder::gl::Texture t;
+	/* Use the texture containing the atlas */
+	glBindTexture(GL_TEXTURE_2D, mAtlas->tex);
+	glUniform1i(uniform_tex, 0);
 
-	/* Create a texture that will be used to hold one "glyph" */
-	GLuint tex;
+	std::vector<cinder::Vec4f> coords;
+  coords.resize(6 * strlen(text));
+	int c = 0;
 
-	glActiveTexture(GL_TEXTURE0);
-	glGenTextures(1, &tex);
-	glBindTexture(GL_TEXTURE_2D, tex);
-  //TODO: where is this in relation to mShader->bind()?
-  mShader.uniform("tex", 0);
-
-	/* We require 1 byte alignment when uploading texture data */
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-	/* Clamping to edges is important to prevent artifacts when scaling */
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-	/* Linear filtering usually looks best for text */
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  
 	/* Loop through all characters */
-	for (p = text; *p; p++) {
-		/* Try to load and render the character */
-		if (FT_Load_Char(mFace, *p, FT_LOAD_RENDER))
+	for (p = (const uint8_t *)text; *p; p++) {
+		/* Calculate the vertex and texture coordinates */
+		float x2 = x + mAtlas->c[*p].bl * sx;
+		float y2 = -y - mAtlas->c[*p].bt * sy;
+		float w = mAtlas->c[*p].bw * sx;
+		float h = mAtlas->c[*p].bh * sy;
+
+		/* Advance the cursor to the start of the next character */
+		x += mAtlas->c[*p].ax * sx;
+		y += mAtlas->c[*p].ay * sy;
+
+		/* Skip glyphs that have no pixels */
+		if (!w || !h)
 			continue;
 
- 		/* Upload the "bitmap", which contains an 8-bit grayscale image, as an alpha texture */
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, g->bitmap.width, g->bitmap.rows, 0, GL_ALPHA, GL_UNSIGNED_BYTE, g->bitmap.buffer);
-
-		/* Calculate the vertex and texture coordinates */
-		float x2 = x + g->bitmap_left * sx;
-		float y2 = -y - g->bitmap_top * sy;
-		float w = g->bitmap.width * sx;
-		float h = g->bitmap.rows * sy;
-    
-		float data[16] = {
-			x2, -y2, 0, 0,
-			x2 + w, -y2, 1, 0,
-			x2, -y2 - h, 0, 1,
-			x2 + w, -y2 - h, 1, 1
-		};
-    
-    mVbo->get("position")->setData(data, 16);
-
-		/* Draw the character on the screen */
-    mVbo->draw();
-    
-		/* Advance the cursor to the start of the next character */
-		x += (g->advance.x >> 6) * sx;
-		y += (g->advance.y >> 6) * sy;
+		coords[c++] = cinder::Vec4f(x2, -y2, mAtlas->c[*p].tx, mAtlas->c[*p].ty);
+		coords[c++] = cinder::Vec4f(x2 + w, -y2, mAtlas->c[*p].tx + mAtlas->c[*p].bw / mAtlas->w, mAtlas->c[*p].ty);
+		coords[c++] = cinder::Vec4f(x2, -y2 - h, mAtlas->c[*p].tx, mAtlas->c[*p].ty + mAtlas->c[*p].bh / mAtlas->h);
+		coords[c++] = cinder::Vec4f(x2 + w, -y2, mAtlas->c[*p].tx + mAtlas->c[*p].bw / mAtlas->w, mAtlas->c[*p].ty);
+		coords[c++] = cinder::Vec4f(x2, -y2 - h, mAtlas->c[*p].tx, mAtlas->c[*p].ty + mAtlas->c[*p].bh / mAtlas->h);
+		coords[c++] = cinder::Vec4f(x2 + w, -y2 - h, mAtlas->c[*p].tx + mAtlas->c[*p].bw / mAtlas->w, mAtlas->c[*p].ty + mAtlas->c[*p].bh / mAtlas->h);
 	}
 
-	//glDisableVertexAttribArray(attribute_coord);
-	glDeleteTextures(1, &tex);
+	/* Draw all the character on the screen in one go */
+  mVbo->get("position")->setData(coords);
+  mVbo->draw();
 }
 
 void
